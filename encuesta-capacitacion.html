@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Encuesta de Finalización de Capacitación | Ópticas Jiménez</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{--azul:#0b4f8a;--azul2:#1f6fb8;--fondo:#f3f6fa;--borde:#dde4ee;--texto:#1d2733;--suave:#66758a;--rojo:#c0392b;--verde:#1a8a5a}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Roboto,Arial,sans-serif;background:var(--fondo);color:var(--texto)}
+  .cont{max-width:720px;margin:0 auto;padding:18px 14px 50px}
+  .cabeza{background:var(--azul);color:#fff;border-radius:14px;padding:22px 22px 18px;margin-bottom:14px}
+  .cabeza h1{margin:0 0 6px;font-size:21px}
+  .cabeza p{margin:0;font-size:14px;opacity:.9;line-height:1.45}
+  .preg{background:#fff;border:1px solid var(--borde);border-radius:12px;padding:16px 18px;margin-bottom:12px}
+  .preg.err{border-color:var(--rojo);box-shadow:0 0 0 1px var(--rojo)}
+  .preg h3{margin:0 0 12px;font-size:15px;font-weight:600;line-height:1.4}
+  .preg h3 .ob{color:var(--rojo)}
+  .preg .num{color:var(--azul2);font-weight:700;margin-right:4px}
+  .msg-err{display:none;color:var(--rojo);font-size:12px;margin-top:8px}
+  .preg.err .msg-err{display:block}
+  .escala{display:flex;gap:6px;flex-wrap:wrap}
+  .escala label{flex:1;min-width:40px}
+  .escala input{display:none}
+  .escala span{display:block;text-align:center;padding:10px 0;border:1px solid var(--borde);border-radius:8px;cursor:pointer;font-weight:600;font-size:15px;user-select:none}
+  .escala input:checked+span{background:var(--azul2);color:#fff;border-color:var(--azul2)}
+  .extremos{display:flex;justify-content:space-between;font-size:12px;color:var(--suave);margin-top:6px}
+  .opciones label{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--borde);border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:14px}
+  .opciones label:has(input:checked){background:#eef5fd;border-color:var(--azul2)}
+  .opciones input{width:18px;height:18px;accent-color:var(--azul2)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chips label{cursor:pointer}
+  .chips input{display:none}
+  .chips span{display:inline-block;padding:7px 12px;border:1px solid var(--borde);border-radius:20px;font-size:13px;user-select:none}
+  .chips input:checked+span{background:var(--azul2);color:#fff;border-color:var(--azul2)}
+  textarea{width:100%;min-height:90px;padding:10px;border:1px solid var(--borde);border-radius:8px;font:inherit;font-size:14px;resize:vertical}
+  .enviar{width:100%;padding:14px;background:var(--azul);color:#fff;border:0;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:6px}
+  .enviar:disabled{opacity:.6;cursor:wait}
+  .nota{font-size:12px;color:var(--suave);text-align:center;margin-top:12px}
+  .gracias{display:none;background:#fff;border:1px solid var(--borde);border-radius:14px;padding:40px 24px;text-align:center}
+  .gracias .ic{font-size:52px}
+  .gracias h2{color:var(--verde);margin:10px 0}
+  .alerta{background:#fdecea;color:var(--rojo);border-radius:8px;padding:10px 12px;font-size:13px;margin-top:10px;display:none}
+</style>
+</head>
+<body>
+<div class="cont">
+  <div class="cabeza">
+    <h1>Encuesta de Finalización de Capacitación Inicial</h1>
+    <p>Esta encuesta toma unos 5 minutos. Nos ayuda a mejorar la capacitación para los próximos ingresos. Sus respuestas son <b>confidenciales</b> y no se usan para evaluar su desempeño.</p>
+  </div>
+
+  <form id="f" novalidate>
+    <div class="preg" data-req="sat">
+      <h3><span class="num">1.</span>En general, ¿qué tan satisfecho(a) está con su primera semana en la empresa? <span class="ob">*</span></h3>
+      <div class="escala" id="escala10"></div>
+      <div class="extremos"><span>1 = Nada satisfecho</span><span>10 = Muy satisfecho</span></div>
+      <div class="msg-err">Seleccione una opción.</div>
+    </div>
+    <div id="likerts"></div>
+  </form>
+
+  <div class="gracias" id="gracias">
+    <div class="ic">✅</div>
+    <h2>¡Gracias por su respuesta!</h2>
+    <p>Su opinión nos ayuda a mejorar. Le deseamos muchos éxitos en su nueva etapa.</p>
+  </div>
+</div>
+
+<script>
+/* ====== CONFIGURACIÓN (la misma que la página de resultados) ====== */
+const SUPABASE_URL = "https://mtowvndeingprrsfaoxk.supabase.co";
+const SUPABASE_KEY = "sb_publishable_IflYiAwqJKh9MewhI-bmfQ_YenKnAJy";
+/* ================================================================== */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Si el link trae ?capacitador=Nombre, la respuesta queda asociada a esa persona
+const CAPACITADOR = new URLSearchParams(location.search).get("capacitador") || null;
+
+const ACUERDO=["Totalmente en desacuerdo","En desacuerdo","De acuerdo","Totalmente de acuerdo"];
+const BLOQUE=[
+  {k:"expectativas", t:"La capacitación cumplió con las expectativas que tenía antes de empezar.", tipo:"likert"},
+  {k:"recomendaria", t:"¿Recomendaría este proceso de capacitación a otro nuevo ingreso?", tipo:"sino"},
+  {k:"temas_claros", t:"Los temas vistos en la capacitación fueron claros y útiles.", tipo:"likert"},
+  {k:"materiales", t:"Los materiales y recursos utilizados (manuales, práctica, producto) fueron suficientes.", tipo:"likert"},
+  {k:"capacitador_claridad", t:"El capacitador explicó los temas con claridad y resolvió mis dudas.", tipo:"likert"},
+  {k:"ritmo", t:"El ritmo de la capacitación fue adecuado (ni muy rápido ni muy lento).", tipo:"likert"},
+  {k:"funciones", t:"Tengo claras mis funciones y responsabilidades como Asesor(a) Óptico(a) / Optometrista.", tipo:"likert"},
+  {k:"preparado", t:"Me siento preparado(a) para iniciar labores en la tienda.", tipo:"likert"},
+  {k:"temas_reforzar", t:"¿Qué temas le hubiera gustado que se explicaran con mayor profundidad? (puede marcar varios)", tipo:"multi",
+   ops:["Servicio al cliente","Abordaje","Manejo de objeciones","Cotizaciones","Anatomía del ojo","Errores refractivos","Tipos de lentes","Materiales","Tecnologías","Tratamientos","Sistema Odoo","Facturación","Traslados","Garantías","Correcciones","JIMWAR","Bajas de inventario","Anulaciones","Contabilidad","Convenios","Tiquetes","Todo quedó bien explicado"]},
+  {k:"valoro", t:"¿Qué fue lo que más valoró de su primera semana?", tipo:"texto"},
+  {k:"mejoraria", t:"¿Qué mejoraría del proceso de capacitación?", tipo:"texto"},
+];
+
+// Escala 1-10
+document.getElementById("escala10").innerHTML=[...Array(10)].map((_,i)=>`<label><input type="radio" name="sat" value="${i+1}"><span>${i+1}</span></label>`).join("");
+
+// Resto de preguntas
+document.getElementById("likerts").innerHTML=BLOQUE.map((p,i)=>{
+  let cuerpo="";
+  if(p.tipo==="likert") cuerpo=`<div class="opciones">${ACUERDO.map((o,j)=>`<label><input type="radio" name="${p.k}" value="${j+1}">${o}</label>`).join("")}</div>`;
+  if(p.tipo==="sino") cuerpo=`<div class="opciones"><label><input type="radio" name="${p.k}" value="si">Sí</label><label><input type="radio" name="${p.k}" value="no">No</label></div>`;
+  if(p.tipo==="multi") cuerpo=`<div class="chips">${p.ops.map(o=>`<label><input type="checkbox" name="${p.k}" value="${o}"><span>${o}</span></label>`).join("")}</div>`;
+  if(p.tipo==="texto") cuerpo=`<textarea name="${p.k}" maxlength="1500" placeholder="Escriba su respuesta"></textarea>`;
+  return `<div class="preg" data-req="${p.k}"><h3><span class="num">${i+2}.</span>${p.t} <span class="ob">*</span></h3>${cuerpo}<div class="msg-err">Esta pregunta es obligatoria.</div></div>`;
+}).join("")+`<button type="submit" class="enviar" id="btn">Enviar encuesta</button><div class="alerta" id="alerta"></div><p class="nota">Ópticas Jiménez · Respuesta anónima</p>`;
+
+// "Todo quedó bien explicado" desmarca lo demás y viceversa
+document.addEventListener("change",e=>{
+  if(e.target.name!=="temas_reforzar") return;
+  const todos=[...document.querySelectorAll('[name=temas_reforzar]')];
+  const bien=todos.find(x=>x.value==="Todo quedó bien explicado");
+  if(e.target===bien && bien.checked) todos.forEach(x=>{if(x!==bien)x.checked=false;});
+  else if(e.target.checked) bien.checked=false;
+});
+document.addEventListener("input",e=>{const p=e.target.closest(".preg"); if(p) p.classList.remove("err");});
+
+document.getElementById("f").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const F=document.getElementById("f");
+  const val=n=>(F.querySelector(`[name="${n}"]:checked`)||{}).value;
+  const d={
+    capacitador: CAPACITADOR,
+    satisfaccion: +val("sat")||null,
+    recomendaria: val("recomendaria")? val("recomendaria")==="si" : null,
+    temas_reforzar: [...F.querySelectorAll('[name=temas_reforzar]:checked')].map(x=>x.value),
+    valoro: F.querySelector("[name=valoro]").value.trim(),
+    mejoraria: F.querySelector("[name=mejoraria]").value.trim(),
+  };
+  ["expectativas","temas_claros","materiales","capacitador_claridad","ritmo","funciones","preparado"].forEach(k=>d[k]=+val(k)||null);
+
+  // Validación
+  let primero=null;
+  document.querySelectorAll(".preg").forEach(p=>{
+    const k=p.dataset.req; const key=k==="sat"?"satisfaccion":k;
+    const v=d[key]; const vacio= v==null || v==="" || (Array.isArray(v)&&!v.length);
+    p.classList.toggle("err",vacio); if(vacio&&!primero) primero=p;
+  });
+  if(primero){ primero.scrollIntoView({behavior:"smooth",block:"center"}); return; }
+
+  const btn=document.getElementById("btn"), al=document.getElementById("alerta");
+  btn.disabled=true; btn.textContent="Enviando…"; al.style.display="none";
+  const {error}=await sb.from("encuesta_capacitacion").insert(d);
+  if(error){
+    btn.disabled=false; btn.textContent="Enviar encuesta";
+    al.textContent="No se pudo enviar. Revise su conexión e intente de nuevo. ("+error.message+")"; al.style.display="block";
+    return;
+  }
+  F.style.display="none"; document.querySelector(".cabeza").style.display="none";
+  document.getElementById("gracias").style.display="block"; scrollTo(0,0);
+});
+</script>
+</body>
+</html>
